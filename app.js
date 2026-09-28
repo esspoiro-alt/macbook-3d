@@ -50,7 +50,6 @@ const silver = new THREE.MeshStandardMaterial({ color: 0xc8c9cd, metalness: 0.92
 const silverDark = new THREE.MeshStandardMaterial({ color: 0xa9abb0, metalness: 0.95, roughness: 0.3 });
 const black = new THREE.MeshStandardMaterial({ color: 0x0a0a0b, metalness: 0.08, roughness: 0.42 });
 const keyMat = new THREE.MeshStandardMaterial({ color: 0x101012, metalness: 0.04, roughness: 0.6 });
-const glass = new THREE.MeshStandardMaterial({ color: 0x050506, metalness: 0.08, roughness: 0.18 });
 
 const base = new THREE.Mesh(new RoundedBoxGeometry(31.26, 1.18, 22.12, 8, 1.0), silver);
 base.position.y = 0.45;
@@ -132,44 +131,64 @@ logo.rotation.x = -Math.PI / 2;
 logo.position.set(0, 10.55, 0.51);
 lidPivot.add(logo);
 
-const OPEN_ANGLE = THREE.MathUtils.degToRad(-108);
+// Для этой геометрии: 90° = крышка лежит на базе (закрыто), -18° = раскрыта на 108°.
+const CLOSED_ANGLE = THREE.MathUtils.degToRad(90);
+const OPEN_ANGLE = THREE.MathUtils.degToRad(-18);
 let playing = false;
 let playStartedAt = 0;
+const PLAY_DURATION = 1600;
 
 function clamp01(v){ return Math.max(0, Math.min(1, v)); }
-function smoothstep(t){ t=clamp01(t); return t*t*(3-2*t); }
+function easeInOutCubic(t){
+  t = clamp01(t);
+  return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2;
+}
 function setProgress(raw){
   const p = clamp01(Number(raw)||0);
-  const eased = smoothstep(p);
-  lidPivot.rotation.x = THREE.MathUtils.lerp(0, OPEN_ANGLE, eased);
+  const eased = easeInOutCubic(p);
+  lidPivot.rotation.x = THREE.MathUtils.lerp(CLOSED_ANGLE, OPEN_ANGLE, eased);
   slider.value = String(p);
-  status.textContent = `${Math.round(p*100)}% · ${Math.round(eased*108)}°`;
+  status.textContent = p <= 0.001 ? 'готово · закрыт' : p >= 0.999 ? 'готово · открыт 108°' : `${Math.round(p*100)}% · открытие`;
 }
 
 setProgress(0);
-status.textContent = 'готово · закрыт';
+playButton.textContent = 'Проверить';
 
-slider.addEventListener('input',()=>{ playing=false; playButton.textContent='Проверить'; setProgress(slider.value); });
+slider.addEventListener('input',()=>{
+  playing=false;
+  playButton.textContent='Проверить';
+  setProgress(slider.value);
+});
+
 window.addEventListener('scroll',()=>{
   if (playing) return;
   const max = document.documentElement.scrollHeight-innerHeight;
   setProgress(max>0?scrollY/max:0);
 },{passive:true});
+
 playButton.addEventListener('click',()=>{
-  playing=!playing; playStartedAt=performance.now(); playButton.textContent=playing?'Стоп':'Проверить';
+  playing=true;
+  playStartedAt=performance.now();
+  playButton.textContent='Открываю…';
+  setProgress(0);
 });
 
 function render(time){
   requestAnimationFrame(render);
   if(playing){
-    const phase=(time-playStartedAt)/1800;
-    const p=(Math.sin(phase-Math.PI/2)+1)/2;
+    const p = clamp01((time-playStartedAt)/PLAY_DURATION);
     setProgress(p);
+    if(p >= 1){
+      playing=false;
+      playButton.textContent='Повторить';
+    }
   }
   renderer.render(scene,camera);
 }
 requestAnimationFrame(render);
 
 window.addEventListener('resize',()=>{
-  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight);
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
 });
