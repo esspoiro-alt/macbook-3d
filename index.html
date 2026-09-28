@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MacBook 3D — Diana Ro</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <main class="page">
+    <section class="demo" id="demo">
+      <canvas id="webgl"></canvas>
+
+      <div class="hud">
+        <div>
+          <b>MacBook Pro 14"</b>
+          <span id="status">Загружаю 3D…</span>
+        </div>
+        <input id="progress" type="range" min="0" max="1" step="0.001" value="0" aria-label="Открытие ноутбука" />
+        <button id="play" type="button">Проверить</button>
+      </div>
+
+      <div class="tip">Скролл вниз: закрытый → открытый</div>
+    </section>
+    <div class="scroll-space" aria-hidden="true"></div>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
