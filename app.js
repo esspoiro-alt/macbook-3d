@@ -131,9 +131,11 @@ logo.rotation.x = -Math.PI / 2;
 logo.position.set(0, 10.55, 0.51);
 lidPivot.add(logo);
 
-// Для этой геометрии: 90° = крышка лежит на базе (закрыто), -18° = раскрыта на 108°.
+// Для этой композиции: 90° = крышка лежит на базе (закрыто).
+// Конечный угол +18° оставляет верх крышки со стороны зрителя/камеры,
+// поэтому она поднимается ВПЕРЁД, а не заваливается за заднюю петлю.
 const CLOSED_ANGLE = THREE.MathUtils.degToRad(90);
-const OPEN_ANGLE = THREE.MathUtils.degToRad(-18);
+const OPEN_ANGLE = THREE.MathUtils.degToRad(18);
 let playing = false;
 let playStartedAt = 0;
 const PLAY_DURATION = 1600;
@@ -148,7 +150,7 @@ function setProgress(raw){
   const eased = easeInOutCubic(p);
   lidPivot.rotation.x = THREE.MathUtils.lerp(CLOSED_ANGLE, OPEN_ANGLE, eased);
   slider.value = String(p);
-  status.textContent = p <= 0.001 ? 'готово · закрыт' : p >= 0.999 ? 'готово · открыт 108°' : `${Math.round(p*100)}% · открытие`;
+  status.textContent = p <= 0.001 ? 'готово · закрыт' : p >= 0.999 ? 'готово · открыт вперёд' : `${Math.round(p*100)}% · открытие`;
 }
 
 setProgress(0);
