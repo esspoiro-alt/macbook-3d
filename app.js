@@ -101,7 +101,7 @@ bezel.rotation.x = Math.PI / 2;
 bezel.position.set(0, 10.58, -0.06);
 lidPivot.add(bezel);
 
-function createScreenTexture() {
+function createFallbackScreenTexture() {
   const c = document.createElement('canvas');
   c.width = 1512; c.height = 982;
   const ctx = c.getContext('2d');
@@ -121,15 +121,23 @@ function createScreenTexture() {
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; return tex;
 }
 
-const screenMat = new THREE.MeshBasicMaterial({ map: createScreenTexture(), toneMapped: false });
+const screenMat = new THREE.MeshBasicMaterial({ map: createFallbackScreenTexture(), toneMapped: false });
+
+new THREE.TextureLoader().load(
+  './screen.png',
+  (tex) => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    screenMat.map = tex;
+    screenMat.needsUpdate = true;
+  },
+  undefined,
+  () => console.info('screen.png пока не добавлен — оставляю тестовый экран')
+);
+
 const screen = new THREE.Mesh(new THREE.PlaneGeometry(29.15, 18.9), screenMat);
 screen.position.set(0, 10.52, -0.18);
 lidPivot.add(screen);
-
-const logo = new THREE.Mesh(new THREE.CircleGeometry(1.25, 48), new THREE.MeshStandardMaterial({ color: 0xaeb0b5, metalness: 0.65, roughness: 0.3 }));
-logo.rotation.x = -Math.PI / 2;
-logo.position.set(0, 10.55, 0.51);
-lidPivot.add(logo);
 
 // Для этой композиции: 90° = крышка лежит на базе (закрыто).
 // Конечный угол +18° оставляет верх крышки со стороны зрителя/камеры,
