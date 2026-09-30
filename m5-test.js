@@ -33,9 +33,6 @@ let model=null, pivot=null, lidMeshes=[], baseMeshes=[];
 let rootBox=null, lidBox=null, baseBox=null;
 let playing=false, t0=0;
 const DURATION=2600;
-let targetProgress=0;
-let smoothProgress=0;
-let touchY=null;
 
 function resize(){
   const w=innerWidth,h=innerHeight;
@@ -308,8 +305,6 @@ new GLTFLoader().load('./macbook_pro_14_inch_M5.glb',gltf=>{
   setupCameras();
   const max=document.documentElement.scrollHeight-innerHeight;
   const initial=max>0 ? scrollY/max : 0;
-  targetProgress=initial;
-  smoothProgress=initial;
   setProgress(initial);
   status.textContent=initial<=0.001?'готово · закрыт':'готово · скролл управляет анимацией';
 },undefined,err=>{
@@ -321,88 +316,33 @@ new GLTFLoader().load('./macbook_pro_14_inch_M5.glb',gltf=>{
 slider.addEventListener('input',()=>{
   playing=false;
   const p=clamp(Number(slider.value)||0);
-  targetProgress=p;
-  smoothProgress=p;
   setProgress(p);
   const max=document.documentElement.scrollHeight-innerHeight;
   if(max>0) window.scrollTo(0,max*p);
 });
 
-function setScrollProgressFromDelta(deltaY){
-  if(!pivot) return;
-  playing=false;
-
-  // One viewport of wheel travel advances roughly 30% of the animation.
-  const sensitivity=Math.max(innerHeight*3.2,1800);
-  targetProgress=clamp(targetProgress + deltaY/sensitivity);
-
-  // Keep the actual page scrollbar synchronized as well.
-  const max=document.documentElement.scrollHeight-innerHeight;
-  if(max>0) window.scrollTo(0,max*targetProgress);
-}
-
-window.addEventListener('wheel',(e)=>{
-  // Directly drive the 3D progress. This is more reliable in Safari with a fixed WebGL canvas.
-  e.preventDefault();
-  setScrollProgressFromDelta(e.deltaY);
-},{passive:false});
-
 window.addEventListener('scroll',()=>{
   if(!pivot || playing) return;
   const max=document.documentElement.scrollHeight-innerHeight;
-  if(max>0){
-    targetProgress=clamp(scrollY/max);
-  }
+  const p=max>0 ? scrollY/max : 0;
+  setProgress(p);
 },{passive:true});
-
-window.addEventListener('touchstart',(e)=>{
-  touchY=e.touches?.[0]?.clientY ?? null;
-},{passive:true});
-
-window.addEventListener('touchmove',(e)=>{
-  if(touchY==null) return;
-  const y=e.touches?.[0]?.clientY;
-  if(y==null) return;
-  const dy=touchY-y;
-  touchY=y;
-  setScrollProgressFromDelta(dy*2.2);
-},{passive:true});
-
-window.addEventListener('touchend',()=>{touchY=null},{passive:true});
 
 play.addEventListener('click',()=>{
   if(!pivot)return;
   playing=true;
   t0=performance.now();
-  targetProgress=0;
-  smoothProgress=0;
   window.scrollTo(0,0);
   setProgress(0);
 });
 
 function tick(now){
   requestAnimationFrame(tick);
-
   if(playing){
     const p=clamp((now-t0)/DURATION);
-    targetProgress=p;
-    smoothProgress=p;
     setProgress(p);
-
-    if(p>=1){
-      playing=false;
-      const max=document.documentElement.scrollHeight-innerHeight;
-      if(max>0) window.scrollTo(0,max);
-    }
-  } else if(pivot){
-    // Smooth scrub: scroll position is the target, animation eases toward it.
-    smoothProgress += (targetProgress-smoothProgress)*0.16;
-    if(Math.abs(targetProgress-smoothProgress)<0.0001){
-      smoothProgress=targetProgress;
-    }
-    setProgress(smoothProgress);
+    if(p>=1) playing=false;
   }
-
   renderer.render(scene,camera);
 }
 requestAnimationFrame(tick);
