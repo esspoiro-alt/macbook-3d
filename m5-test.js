@@ -406,15 +406,3 @@ function tick(now){
   renderer.render(scene,camera);
 }
 requestAnimationFrame(tick);
-  if(playing){
-    const p=clamp((now-t0)/DURATION);
-    setProgress(p);
-    if(p>=1){
-      playing=false;
-      const max=document.documentElement.scrollHeight-innerHeight;
-      if(max>0) scrollTo({top:max,behavior:'auto'});
-    }
-  }
-  renderer.render(scene,camera);
-}
-requestAnimationFrame(tick);
