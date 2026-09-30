@@ -54,13 +54,21 @@ fitBtn.onclick=fit;
 function describe(root){
   let lines=[];
   let meshCount=0;
+  root.updateMatrixWorld(true);
   root.traverse(o=>{
     const depth=(()=>{let d=0,p=o.parent;while(p&&p!==root){d++;p=p.parent}return d})()
     const pad='  '.repeat(Math.min(depth,12));
     const type=o.isMesh?'MESH':o.isBone?'BONE':o.type.toUpperCase();
     if(o.isMesh)meshCount++;
-    const mat=o.isMesh?(' | mat='+(Array.isArray(o.material)?o.material.map(m=>m?.name||'(unnamed)').join(','):o.material?.name||'(unnamed)')):'';
-    lines.push(`${pad}[${type}] ${o.name||'(unnamed)'}${mat}`);
+    let extra='';
+    if(o.isMesh){
+      const box=new THREE.Box3().setFromObject(o);
+      const size=box.getSize(new THREE.Vector3());
+      const center=box.getCenter(new THREE.Vector3());
+      const mat=(Array.isArray(o.material)?o.material.map(m=>m?.name||'(unnamed)').join(','):o.material?.name||'(unnamed)');
+      extra=` | mat=${mat} | size=${size.x.toFixed(3)},${size.y.toFixed(3)},${size.z.toFixed(3)} | center=${center.x.toFixed(3)},${center.y.toFixed(3)},${center.z.toFixed(3)}`;
+    }
+    lines.push(`${pad}[${type}] ${o.name||'(unnamed)'}${extra}`);
   });
   return {meshCount,text:lines.join('\n')};
 }
@@ -91,3 +99,35 @@ function tick(){
   renderer.render(scene,camera);
 }
 tick();
+
+const raycaster=new THREE.Raycaster();
+const pointer=new THREE.Vector2();
+let selected=null;
+let originalMaterial=null;
+
+function selectMesh(mesh){
+  if(selected && originalMaterial){
+    selected.material=originalMaterial;
+  }
+  selected=mesh;
+  if(!mesh) return;
+  originalMaterial=mesh.material;
+  const highlight=new THREE.MeshStandardMaterial({color:0xff3b30,metalness:0.1,roughness:0.45,emissive:0x220000});
+  mesh.material=highlight;
+  const box=new THREE.Box3().setFromObject(mesh);
+  const size=box.getSize(new THREE.Vector3());
+  const center=box.getCenter(new THREE.Vector3());
+  status.className='ok';
+  status.textContent=`SELECTED: ${mesh.name||'(unnamed)'} | size ${size.x.toFixed(3)}, ${size.y.toFixed(3)}, ${size.z.toFixed(3)} | center ${center.x.toFixed(3)}, ${center.y.toFixed(3)}, ${center.z.toFixed(3)}`;
+}
+
+canvas.addEventListener('click',e=>{
+  if(!root)return;
+  const r=canvas.getBoundingClientRect();
+  pointer.x=((e.clientX-r.left)/r.width)*2-1;
+  pointer.y=-((e.clientY-r.top)/r.height)*2+1;
+  raycaster.setFromCamera(pointer,camera);
+  const hits=raycaster.intersectObject(root,true);
+  const hit=hits.find(h=>h.object?.isMesh);
+  if(hit) selectMesh(hit.object);
+});
