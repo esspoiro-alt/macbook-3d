@@ -119,13 +119,18 @@ function rigModel(root){
   const lidCenter=lidBox.getCenter(new THREE.Vector3());
   const size=rootBox.getSize(new THREE.Vector3());
 
-  // Hinge: lower edge of lid, near rear edge. We derive it from actual geometry.
-  const hingeY=lidBox.min.y + size.y*0.01;
-  const hingeZ=lidCenter.z;
+  // HINGE PHYSICS:
+  // The hinge must live on the REAR TOP EDGE OF THE BASE, not in the center of the lid.
+  // Camera faces the laptop from +Z, so the rear edge is baseBox.min.z.
+  // This makes the lid rotate around the real MacBook hinge instead of "coming out from under the keyboard".
+  const baseCenter=baseBox.getCenter(new THREE.Vector3());
+  const baseSize=baseBox.getSize(new THREE.Vector3());
+  const hingeY=baseBox.max.y - baseSize.y*0.03;
+  const hingeZ=baseBox.min.z + baseSize.z*0.015;
 
   pivot=new THREE.Group();
   pivot.name='AUTO_HINGE_PIVOT';
-  pivot.position.set(lidCenter.x,hingeY,hingeZ);
+  pivot.position.set(baseCenter.x,hingeY,hingeZ);
   scene.add(pivot);
 
   lidMeshes.forEach(o=>reparentPreserveWorld(o,pivot));
@@ -134,7 +139,7 @@ function rigModel(root){
   debug.innerHTML=
     '<span class="good">AUTO-RIG OK</span><br>'+
     'lid meshes: '+lidMeshes.length+' / '+d.all.length+'<br>'+
-    'hinge: '+pivot.position.toArray().map(v=>v.toFixed(3)).join(', ')+'<br><br>'+
+    'hinge (rear top edge): '+pivot.position.toArray().map(v=>v.toFixed(3)).join(', ')+'<br><br>'+
     names.join('<br>');
 }
 
@@ -182,17 +187,18 @@ function setupCameras(){
     baseCenter.z - baseSize.z*0.10
   );
 
-  // 3) HERO: камера выравнивается относительно дисплея.
-  // Клавиатура естественно уходит вниз из кадра, остаются экран и тонкая нижняя кромка.
-  const heroDist=(Math.max(lidSize.x,lidSize.y)/2)/Math.tan(THREE.MathUtils.degToRad(camera.fov)/2)*1.10;
+  // 3) HERO: камера смотрит почти строго в центр дисплея и подходит ближе.
+  // Фрейм заполняется крышкой, поэтому клавиатура физически уходит ниже кадра,
+  // а внизу остаётся только тонкая серебристая кромка.
+  const heroDist=(lidSize.x/2)/Math.tan(THREE.MathUtils.degToRad(camera.fov)/2)*0.79;
   heroCamPos.set(
     lidCenter.x,
-    lidCenter.y + lidSize.y*0.01,
+    lidCenter.y + lidSize.y*0.05,
     lidBox.max.z + heroDist
   );
   heroTarget.set(
     lidCenter.x,
-    lidCenter.y + lidSize.y*0.02,
+    lidCenter.y + lidSize.y*0.10,
     lidCenter.z
   );
 
@@ -210,8 +216,9 @@ function setProgress(v){
   const openPhase=clamp(p/OPEN_END);
   const a=ease(openPhase);
 
-  // 101° закрывает крышку полностью; раньше 86° оставляли заметную щель.
-  const CLOSED=THREE.MathUtils.degToRad(101);
+  // With the pivot now on the real rear hinge, 90° is the physical closed position.
+  // A tiny 0.7° offset prevents visual z-fighting without letting the lid sink into the keyboard.
+  const CLOSED=THREE.MathUtils.degToRad(89.3);
   const OPEN=THREE.MathUtils.degToRad(0);
   pivot.rotation.x=THREE.MathUtils.lerp(CLOSED,OPEN,a);
 
@@ -219,7 +226,7 @@ function setProgress(v){
   // 0–24%: из низкого "закрытого" ракурса поднимаемся к виду на клавиатуру.
   const camRise=ease(clamp(p/.24));
   // 70–100%: после полного открытия переходим во фронтальный hero-ракурс.
-  const hero=ease(clamp((p-OPEN_END)/(1-OPEN_END)));
+  const hero=ease(clamp((p-.76)/.24));
 
   const phase12Pos=new THREE.Vector3().lerpVectors(closedCamPos,openingCamPos,camRise);
   const phase12Target=new THREE.Vector3().lerpVectors(closedTarget,openingTarget,camRise);
