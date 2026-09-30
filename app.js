@@ -27,8 +27,10 @@ const CAMERA_OPEN = {
 };
 // Stage B camera: фронтальный product-shot — клавиатура уходит из кадра.
 const CAMERA_HERO = {
-  position: new THREE.Vector3(0, 10.9, 38.5),
-  target: new THREE.Vector3(0, 10.8, -0.4)
+  // Камера уходит ниже и чуть ближе к нижней кромке экрана:
+  // клавиатура естественно прячется за передней кромкой корпуса.
+  position: new THREE.Vector3(0, 6.6, 38.8),
+  target: new THREE.Vector3(0, 10.9, -0.55)
 };
 const cameraTarget = CAMERA_OPEN.target.clone();
 camera.position.copy(CAMERA_OPEN.position);
@@ -76,9 +78,9 @@ const black = new THREE.MeshStandardMaterial({
   roughness: 0.38
 });
 const keyMat = new THREE.MeshStandardMaterial({
-  color: 0x121214,
-  metalness: 0.03,
-  roughness: 0.5
+  color: 0x050506,
+  metalness: 0.0,
+  roughness: 0.82
 });
 
 // -------- BASE / DECK --------
@@ -114,10 +116,10 @@ laptop.add(trackpad);
 // Не сетка 14x6: разные ширины клавиш, отдельный function-row и большой spacebar.
 const keyboard = new THREE.Group();
 const keyHeight = 0.145;
-const keyDepth = 1.26;
-const gapX = 0.18;
-const gapZ = 0.22;
-const unit = 1.36;
+const keyDepth = 1.12;
+const gapX = 0.24;
+const gapZ = 0.30;
+const unit = 1.28;
 
 function addKey(x, z, units = 1, depth = keyDepth) {
   const width = Math.max(0.72, units * unit + (units - 1) * gapX);
@@ -269,42 +271,55 @@ const screen = new THREE.Mesh(
 screen.position.set(0, 10.52, -0.17);
 lidPivot.add(screen);
 
-// -------- APPLE-STYLE BACK LOGO --------
-// Видно только на внешней стороне крышки, пока ноут закрыт / открывается.
+// -------- APPLE LOGO ON OUTER LID ONLY --------
+// Важно: логотип находится на ОБРАТНОЙ стороне крышки.
+// При переходе к фронтальному экрану он скрывается естественно/принудительно,
+// поэтому на дисплее яблоко больше никогда не появляется.
 function createAppleLogoTexture() {
   const c = document.createElement('canvas');
   c.width = 512;
   c.height = 512;
   const ctx = c.getContext('2d');
   ctx.clearRect(0, 0, 512, 512);
-  ctx.fillStyle = 'rgba(25,25,28,0.92)';
 
-  // Стилизованный силуэт яблока.
-  ctx.beginPath();
-  ctx.moveTo(255, 170);
-  ctx.bezierCurveTo(210, 135, 145, 155, 128, 220);
-  ctx.bezierCurveTo(105, 310, 168, 390, 215, 400);
-  ctx.bezierCurveTo(244, 406, 258, 387, 286, 400);
-  ctx.bezierCurveTo(336, 398, 402, 315, 378, 224);
-  ctx.bezierCurveTo(362, 160, 298, 137, 255, 170);
-  ctx.closePath();
-  ctx.fill();
+  // На macOS/iOS этот символ рендерится системным Apple glyph и выглядит как настоящий логотип.
+  ctx.fillStyle = '#111214';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '360px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif';
+  ctx.fillText('', 256, 272);
 
-  // "bite"
-  ctx.globalCompositeOperation = 'destination-out';
-  ctx.beginPath();
-  ctx.arc(374, 225, 42, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.fillStyle = 'rgba(25,25,28,0.92)';
-  ctx.save();
-  ctx.translate(285, 115);
-  ctx.rotate(-0.55);
-  ctx.beginPath();
-  ctx.ellipse(0, 0, 34, 58, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  // Fallback: если glyph недоступен, добавляем узнаваемый силуэт.
+  const pixels = ctx.getImageData(0,0,512,512).data;
+  let alpha = 0;
+  for (let i=3;i<pixels.length;i+=4) alpha += pixels[i];
+  if (alpha < 10000) {
+    ctx.clearRect(0,0,512,512);
+    ctx.fillStyle = '#111214';
+    ctx.beginPath();
+    ctx.moveTo(254,171);
+    ctx.bezierCurveTo(223,144,180,143,151,168);
+    ctx.bezierCurveTo(109,204,116,279,137,323);
+    ctx.bezierCurveTo(161,373,190,403,222,401);
+    ctx.bezierCurveTo(245,399,255,386,278,399);
+    ctx.bezierCurveTo(309,411,345,374,365,332);
+    ctx.bezierCurveTo(386,289,395,236,369,196);
+    ctx.bezierCurveTo(347,162,303,147,254,171);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalCompositeOperation='destination-out';
+    ctx.beginPath();
+    ctx.arc(369,220,40,0,Math.PI*2);
+    ctx.fill();
+    ctx.globalCompositeOperation='source-over';
+    ctx.save();
+    ctx.translate(286,116);
+    ctx.rotate(-0.58);
+    ctx.beginPath();
+    ctx.ellipse(0,0,27,48,0,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -312,15 +327,18 @@ function createAppleLogoTexture() {
 }
 
 const appleLogo = new THREE.Mesh(
-  new THREE.PlaneGeometry(4.45, 4.45),
+  new THREE.PlaneGeometry(4.6, 4.6),
   new THREE.MeshBasicMaterial({
     map: createAppleLogoTexture(),
     transparent: true,
     depthWrite: false,
+    side: THREE.FrontSide,
     toneMapped: false
   })
 );
-appleLogo.position.set(0, 10.7, 0.46);
+// Outer shell is the opposite side from the screen.
+appleLogo.position.set(0, 10.65, 0.49);
+appleLogo.rotation.y = Math.PI;
 lidPivot.add(appleLogo);
 
 // -------- ANIMATION --------
@@ -329,7 +347,7 @@ lidPivot.add(appleLogo);
 // 68–100%: product-shot — камера опускается и выравнивается по экрану,
 //          клавиатура постепенно уходит из кадра.
 const CLOSED_ANGLE = THREE.MathUtils.degToRad(90);
-const OPEN_ANGLE = THREE.MathUtils.degToRad(0); // полностью вертикально
+const OPEN_ANGLE = THREE.MathUtils.degToRad(-7); // слегка за вертикаль, как у реально открытого MacBook
 const OPEN_STAGE_END = 0.68;
 
 let playing = false;
@@ -363,6 +381,10 @@ function setProgress(raw) {
     lidEase
   );
 
+  // Яблоко видно только на внешней стороне крышки в первой фазе.
+  // К моменту, когда зритель видит дисплей, оно исчезает.
+  appleLogo.visible = p < 0.56;
+
   const heroP = clamp01((p - OPEN_STAGE_END) / (1 - OPEN_STAGE_END));
   const heroEase = easeOutCubic(heroP);
 
@@ -379,8 +401,14 @@ function setProgress(raw) {
   camera.lookAt(cameraTarget);
 
   // Лёгкий подъем всей модели в product-shot фазе.
-  laptop.position.y = THREE.MathUtils.lerp(0, 0.72, heroEase);
-  laptop.position.z = THREE.MathUtils.lerp(0, -0.75, heroEase);
+  laptop.position.y = THREE.MathUtils.lerp(0, 1.05, heroEase);
+  laptop.position.z = THREE.MathUtils.lerp(0, 0.55, heroEase);
+
+  const revealDeck = p > 0.025;
+  keyboard.visible = revealDeck;
+  trackpad.visible = revealDeck;
+  grilleL.visible = revealDeck;
+  grilleR.visible = revealDeck;
 
   slider.value = String(p);
 
