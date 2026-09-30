@@ -30,12 +30,26 @@ button{border:0;border-radius:10px;padding:10px 14px;font-weight:700}
   <span id="status">загрузка…</span>
 </div>
 <div id="debug">Жду модель…</div>
+<script>
+window.__showBootError = function(msg){
+  var s=document.getElementById('status');
+  var d=document.getElementById('debug');
+  if(s){s.textContent='JS ERROR';s.style.color='#ff5d5d';}
+  if(d){d.textContent=String(msg);d.style.color='#ff8a8a';}
+};
+window.addEventListener('error', function(e){
+  window.__showBootError((e.message||'error')+'\n'+(e.filename||'')+':'+(e.lineno||''));
+});
+window.addEventListener('unhandledrejection', function(e){
+  window.__showBootError('Promise: '+(e.reason && (e.reason.stack||e.reason.message) || e.reason));
+});
+</script>
 <script type="importmap">
 {"imports":{
   "three":"https://unpkg.com/three@0.169.0/build/three.module.js",
   "three/addons/":"https://unpkg.com/three@0.169.0/examples/jsm/"
 }}
 </script>
-<script type="module" src="./m5-test.js"></script>
+<script type="module" src="./m5-test.js?v=11"></script>
 </body>
 </html>
