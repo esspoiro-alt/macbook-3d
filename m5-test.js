@@ -303,23 +303,49 @@ new GLTFLoader().load('./macbook_pro_14_inch_M5.glb',gltf=>{
   rigModel(model);
   // rigModel leaves the laptop in the imported OPEN pose.
   setupCameras();
-  setProgress(0);
-  status.textContent='готово · закрыт';
+  const max=document.documentElement.scrollHeight-innerHeight;
+  const initial=max>0 ? scrollY/max : 0;
+  setProgress(initial);
+  status.textContent=initial<=0.001?'готово · закрыт':'готово · скролл управляет анимацией';
 },undefined,err=>{
   console.error(err);
   status.textContent='ошибка загрузки GLB';
   debug.textContent=String(err?.message||err);
 });
 
-slider.addEventListener('input',()=>{playing=false;setProgress(slider.value)});
-play.addEventListener('click',()=>{if(!pivot)return;playing=true;t0=performance.now();setProgress(0)});
+slider.addEventListener('input',()=>{
+  playing=false;
+  const p=Number(slider.value)||0;
+  setProgress(p);
+  const max=document.documentElement.scrollHeight-innerHeight;
+  if(max>0) scrollTo({top:max*p,behavior:'auto'});
+});
+
+window.addEventListener('scroll',()=>{
+  if(!pivot || playing) return;
+  const max=document.documentElement.scrollHeight-innerHeight;
+  const p=max>0 ? scrollY/max : 0;
+  setProgress(p);
+},{passive:true});
+
+play.addEventListener('click',()=>{
+  if(!pivot)return;
+  playing=true;
+  t0=performance.now();
+  scrollTo({top:0,behavior:'auto'});
+  setProgress(0);
+});
 
 function tick(now){
   requestAnimationFrame(tick);
   if(playing){
     const p=clamp((now-t0)/DURATION);
     setProgress(p);
-    if(p>=1) playing=false;
+    if(p>=1){
+      playing=false;
+      const max=document.documentElement.scrollHeight-innerHeight;
+      if(max>0) scrollTo({top:max,behavior:'auto'});
+    }
   }
   renderer.render(scene,camera);
 }
