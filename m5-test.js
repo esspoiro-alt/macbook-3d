@@ -235,20 +235,24 @@ function setupCameras(){
     baseCenter.z
   );
 
-  // 3) HERO: frame the lid itself almost edge-to-edge.
-  // This crops the keyboard out naturally; only the thin lower MacBook rim can remain.
+  // 3) HERO: финальный ракурс как в референсе пользователя.
+  // Камера опускается почти к уровню базы и смотрит чуть вверх на экран.
+  // Так верх клавиатуры скрывается за передней серебристой кромкой,
+  // а в кадре остаются весь экран + тонкая нижняя часть корпуса.
   const hFov=2*Math.atan(Math.tan(vFov/2)*camera.aspect);
   const distForWidth=(lidSize.x*0.5)/Math.tan(hFov/2);
-  const heroDist=distForWidth*1.06;
+
+  // Чуть дальше, чем предыдущий tight crop: оставляем заметные чёрные поля вокруг ноутбука.
+  const heroDist=distForWidth*1.34;
 
   heroCamPos.set(
     lidCenter.x,
-    lidCenter.y + lidSize.y*0.015,
-    lidBox.max.z + heroDist
+    baseBox.max.y + lidSize.y*0.16,
+    baseBox.max.z + heroDist
   );
   heroTarget.set(
     lidCenter.x,
-    lidCenter.y + lidSize.y*0.08,
+    lidCenter.y + lidSize.y*0.03,
     lidCenter.z
   );
 
