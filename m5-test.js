@@ -30,7 +30,7 @@ controls.enableDamping=true;
 controls.enabled=false;
 
 let model=null, pivot=null, lidMeshes=[], baseMeshes=[];
-let rootBox=null, lidBox=null;
+let rootBox=null, lidBox=null, baseBox=null;
 let playing=false, t0=0;
 const DURATION=2600;
 
@@ -111,6 +111,9 @@ function rigModel(root){
   lidMeshes=d.final.map(x=>x.o);
   baseMeshes=d.all.filter(x=>!lidMeshes.includes(x.o)).map(x=>x.o);
 
+  baseBox=new THREE.Box3();
+  baseMeshes.forEach(o=>baseBox.union(worldBox(o)));
+
   lidBox=new THREE.Box3();
   lidMeshes.forEach(o=>lidBox.union(worldBox(o)));
   const lidCenter=lidBox.getCenter(new THREE.Vector3());
@@ -138,48 +141,99 @@ function rigModel(root){
 function ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}
 function clamp(v){return Math.max(0,Math.min(1,v))}
 
-let baseCamPos=new THREE.Vector3();
-let baseTarget=new THREE.Vector3();
+let closedCamPos=new THREE.Vector3();
+let closedTarget=new THREE.Vector3();
+let openingCamPos=new THREE.Vector3();
+let openingTarget=new THREE.Vector3();
 let heroCamPos=new THREE.Vector3();
 let heroTarget=new THREE.Vector3();
 
 function setupCameras(){
-  const size=rootBox.getSize(new THREE.Vector3());
-  const center=rootBox.getCenter(new THREE.Vector3());
-  const maxDim=Math.max(size.x,size.y,size.z);
+  const fullSize=rootBox.getSize(new THREE.Vector3());
+  const baseSize=baseBox.getSize(new THREE.Vector3());
+  const baseCenter=baseBox.getCenter(new THREE.Vector3());
+  const lidSize=lidBox.getSize(new THREE.Vector3());
+  const lidCenter=lidBox.getCenter(new THREE.Vector3());
+  const maxDim=Math.max(fullSize.x,fullSize.y,fullSize.z);
   const dist=(maxDim/2)/Math.tan(THREE.MathUtils.degToRad(camera.fov)/2);
 
-  baseCamPos.set(center.x, center.y+size.y*.16, rootBox.max.z + dist*.92);
-  baseTarget.set(center.x, center.y+size.y*.05, center.z);
+  // 1) CLOSED: камера почти на уровне передней кромки.
+  // Из-за этого в кадре остаётся только тонкий закрытый корпус, как в твоём эскизе.
+  closedCamPos.set(
+    baseCenter.x,
+    baseBox.min.y + baseSize.y*0.42,
+    baseBox.max.z + dist*0.82
+  );
+  closedTarget.set(
+    baseCenter.x,
+    baseBox.min.y + baseSize.y*0.38,
+    baseCenter.z
+  );
 
-  // final = lower camera, almost frontal to screen, keyboard slips out below frame
-  heroCamPos.set(center.x, center.y+size.y*.02, rootBox.max.z + dist*.78);
-  heroTarget.set(center.x, center.y+size.y*.28, center.z-size.z*.05);
+  // 2) OPENING: камера поднимается, чтобы во время открытия хорошо видеть клавиатуру.
+  openingCamPos.set(
+    baseCenter.x,
+    baseBox.max.y + fullSize.y*0.34,
+    baseBox.max.z + dist*0.82
+  );
+  openingTarget.set(
+    baseCenter.x,
+    baseBox.max.y + fullSize.y*0.05,
+    baseCenter.z - baseSize.z*0.10
+  );
 
-  camera.position.copy(baseCamPos);
-  camera.lookAt(baseTarget);
+  // 3) HERO: камера выравнивается относительно дисплея.
+  // Клавиатура естественно уходит вниз из кадра, остаются экран и тонкая нижняя кромка.
+  const heroDist=(Math.max(lidSize.x,lidSize.y)/2)/Math.tan(THREE.MathUtils.degToRad(camera.fov)/2)*1.10;
+  heroCamPos.set(
+    lidCenter.x,
+    lidCenter.y + lidSize.y*0.01,
+    lidBox.max.z + heroDist
+  );
+  heroTarget.set(
+    lidCenter.x,
+    lidCenter.y + lidSize.y*0.02,
+    lidCenter.z
+  );
+
+  camera.position.copy(closedCamPos);
+  camera.lookAt(closedTarget);
 }
 
 function setProgress(v){
   if(!pivot) return;
   const p=clamp(Number(v)||0);
 
-  // Phase 1: close -> open. Current imported model is open, so p=0 closes lid.
-  const openPhase=clamp(p/.68);
+  // Крышка открывается на первых 70% скролла.
+  // В исходном GLB она уже открыта, поэтому 0° = исходное открытое положение.
+  const OPEN_END=.70;
+  const openPhase=clamp(p/OPEN_END);
   const a=ease(openPhase);
-  // Imported model is treated as the open pose at 0 rotation.
-  const CLOSED=THREE.MathUtils.degToRad(86);
+
+  // 101° закрывает крышку полностью; раньше 86° оставляли заметную щель.
+  const CLOSED=THREE.MathUtils.degToRad(101);
   const OPEN=THREE.MathUtils.degToRad(0);
   pivot.rotation.x=THREE.MathUtils.lerp(CLOSED,OPEN,a);
 
-  // Phase 2: camera moves into presentation framing
-  const q=ease(clamp((p-.68)/.32));
-  camera.position.lerpVectors(baseCamPos,heroCamPos,q);
-  const target=new THREE.Vector3().lerpVectors(baseTarget,heroTarget,q);
+  // Камера имеет ТРИ состояния, как в твоём эскизе.
+  // 0–24%: из низкого "закрытого" ракурса поднимаемся к виду на клавиатуру.
+  const camRise=ease(clamp(p/.24));
+  // 70–100%: после полного открытия переходим во фронтальный hero-ракурс.
+  const hero=ease(clamp((p-OPEN_END)/(1-OPEN_END)));
+
+  const phase12Pos=new THREE.Vector3().lerpVectors(closedCamPos,openingCamPos,camRise);
+  const phase12Target=new THREE.Vector3().lerpVectors(closedTarget,openingTarget,camRise);
+
+  camera.position.lerpVectors(phase12Pos,heroCamPos,hero);
+  const target=new THREE.Vector3().lerpVectors(phase12Target,heroTarget,hero);
   camera.lookAt(target);
 
   slider.value=String(p);
-  status.textContent=p<.02?'закрыт':p<.68?'открывается':p<.99?'камера → фронтально':'готово';
+  status.textContent=
+    p<.02 ? '1 · полностью закрыт' :
+    p<OPEN_END ? '2 · открывается · клавиатура видна' :
+    p<.99 ? '3 · камера → экран' :
+    '3 · открыт · клавиатура скрыта';
 }
 
 new GLTFLoader().load('./macbook_pro_14_inch_M5.glb',gltf=>{
