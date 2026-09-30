@@ -116,17 +116,20 @@ function rigModel(root){
 
   lidBox=new THREE.Box3();
   lidMeshes.forEach(o=>lidBox.union(worldBox(o)));
-  const lidCenter=lidBox.getCenter(new THREE.Vector3());
-  const size=rootBox.getSize(new THREE.Vector3());
 
-  // HINGE PHYSICS:
-  // The hinge must live on the REAR TOP EDGE OF THE BASE, not in the center of the lid.
-  // Camera faces the laptop from +Z, so the rear edge is baseBox.min.z.
-  // This makes the lid rotate around the real MacBook hinge instead of "coming out from under the keyboard".
+  const lidCenter=lidBox.getCenter(new THREE.Vector3());
   const baseCenter=baseBox.getCenter(new THREE.Vector3());
   const baseSize=baseBox.getSize(new THREE.Vector3());
-  const hingeY=baseBox.max.y - baseSize.y*0.03;
-  const hingeZ=baseBox.min.z + baseSize.z*0.015;
+
+  // Determine which Z edge of the base is actually the hinge edge.
+  // We choose the edge physically closest to the bottom/center plane of the open lid,
+  // instead of assuming min.z or max.z.
+  const distToMinZ=Math.abs(lidCenter.z-baseBox.min.z);
+  const distToMaxZ=Math.abs(lidCenter.z-baseBox.max.z);
+  const hingeZ=distToMinZ<distToMaxZ ? baseBox.min.z : baseBox.max.z;
+
+  // The real hinge height is where the lower edge of the lid meets the top of the base.
+  const hingeY=(lidBox.min.y+baseBox.max.y)*0.5;
 
   pivot=new THREE.Group();
   pivot.name='AUTO_HINGE_PIVOT';
@@ -135,11 +138,49 @@ function rigModel(root){
 
   lidMeshes.forEach(o=>reparentPreserveWorld(o,pivot));
 
+  // After reparenting, test BOTH possible closing directions.
+  // One direction puts the lid over the keyboard; the other sends it under the laptop.
+  // We score both and keep the physically correct one.
+  const scoreAngle=(angle)=>{
+    pivot.rotation.x=angle;
+    pivot.updateMatrixWorld(true);
+    const b=new THREE.Box3();
+    lidMeshes.forEach(o=>b.union(worldBox(o)));
+    const center=b.getCenter(new THREE.Vector3());
+    const size=b.getSize(new THREE.Vector3());
+
+    // Strongly reward lid being ABOVE the base, never underneath it.
+    const above = center.y >= baseCenter.y ? 1 : -1;
+    const minAbovePenalty=Math.abs(Math.min(0,b.min.y-(baseBox.max.y-baseSize.y*0.18)))*100;
+
+    // Reward footprint overlap with the base in Z when closed.
+    const overlapZ=Math.max(0,Math.min(b.max.z,baseBox.max.z)-Math.max(b.min.z,baseBox.min.z));
+    const zScore=overlapZ/Math.max(size.z,1e-6);
+
+    // Closed lid should be thin vertically.
+    const flatScore=1/(1+size.y*20);
+
+    return above*100 + zScore*25 + flatScore*10 - minAbovePenalty;
+  };
+
+  const plus=THREE.MathUtils.degToRad(90);
+  const minus=THREE.MathUtils.degToRad(-90);
+  const plusScore=scoreAngle(plus);
+  const minusScore=scoreAngle(minus);
+  window.__CLOSED_ANGLE = plusScore>=minusScore ? plus : minus;
+
+  // Restore open pose after solving.
+  pivot.rotation.x=0;
+  pivot.updateMatrixWorld(true);
+
   const names=lidMeshes.map(o=>o.name||'(unnamed)').slice(0,80);
   debug.innerHTML=
     '<span class="good">AUTO-RIG OK</span><br>'+
     'lid meshes: '+lidMeshes.length+' / '+d.all.length+'<br>'+
-    'hinge (rear top edge): '+pivot.position.toArray().map(v=>v.toFixed(3)).join(', ')+'<br><br>'+
+    'hinge edge: '+(distToMinZ<distToMaxZ?'minZ':'maxZ')+'<br>'+
+    'hinge: '+pivot.position.toArray().map(v=>v.toFixed(3)).join(', ')+'<br>'+
+    'close direction: '+(window.__CLOSED_ANGLE>0?'+90°':'-90°')+
+    ' | scores '+plusScore.toFixed(1)+' / '+minusScore.toFixed(1)+'<br><br>'+
     names.join('<br>');
 }
 
@@ -154,51 +195,60 @@ let heroCamPos=new THREE.Vector3();
 let heroTarget=new THREE.Vector3();
 
 function setupCameras(){
+  // Recalculate boxes in the imported OPEN pose.
+  baseBox=new THREE.Box3();
+  baseMeshes.forEach(o=>baseBox.union(worldBox(o)));
+  lidBox=new THREE.Box3();
+  lidMeshes.forEach(o=>lidBox.union(worldBox(o)));
+  rootBox=baseBox.clone().union(lidBox);
+
   const fullSize=rootBox.getSize(new THREE.Vector3());
   const baseSize=baseBox.getSize(new THREE.Vector3());
   const baseCenter=baseBox.getCenter(new THREE.Vector3());
   const lidSize=lidBox.getSize(new THREE.Vector3());
   const lidCenter=lidBox.getCenter(new THREE.Vector3());
   const maxDim=Math.max(fullSize.x,fullSize.y,fullSize.z);
-  const dist=(maxDim/2)/Math.tan(THREE.MathUtils.degToRad(camera.fov)/2);
+  const vFov=THREE.MathUtils.degToRad(camera.fov);
+  const dist=(maxDim/2)/Math.tan(vFov/2);
 
-  // 1) CLOSED: камера почти на уровне передней кромки.
-  // Из-за этого в кадре остаётся только тонкий закрытый корпус, как в твоём эскизе.
+  // 1) CLOSED: low front view of a thin shut laptop.
   closedCamPos.set(
     baseCenter.x,
-    baseBox.min.y + baseSize.y*0.42,
+    baseBox.min.y + baseSize.y*0.46,
     baseBox.max.z + dist*0.82
   );
   closedTarget.set(
     baseCenter.x,
-    baseBox.min.y + baseSize.y*0.38,
+    baseBox.min.y + baseSize.y*0.42,
     baseCenter.z
   );
 
-  // 2) OPENING: камера поднимается, чтобы во время открытия хорошо видеть клавиатуру.
+  // 2) OPENING: lift camera so keyboard is clearly visible while lid opens.
   openingCamPos.set(
     baseCenter.x,
-    baseBox.max.y + fullSize.y*0.34,
-    baseBox.max.z + dist*0.82
+    baseBox.max.y + fullSize.y*0.38,
+    baseBox.max.z + dist*0.88
   );
   openingTarget.set(
     baseCenter.x,
-    baseBox.max.y + fullSize.y*0.05,
-    baseCenter.z - baseSize.z*0.10
+    baseBox.max.y + fullSize.y*0.02,
+    baseCenter.z
   );
 
-  // 3) HERO: камера смотрит почти строго в центр дисплея и подходит ближе.
-  // Фрейм заполняется крышкой, поэтому клавиатура физически уходит ниже кадра,
-  // а внизу остаётся только тонкая серебристая кромка.
-  const heroDist=(lidSize.x/2)/Math.tan(THREE.MathUtils.degToRad(camera.fov)/2)*0.79;
+  // 3) HERO: frame the lid itself almost edge-to-edge.
+  // This crops the keyboard out naturally; only the thin lower MacBook rim can remain.
+  const hFov=2*Math.atan(Math.tan(vFov/2)*camera.aspect);
+  const distForWidth=(lidSize.x*0.5)/Math.tan(hFov/2);
+  const heroDist=distForWidth*1.06;
+
   heroCamPos.set(
     lidCenter.x,
-    lidCenter.y + lidSize.y*0.05,
+    lidCenter.y + lidSize.y*0.015,
     lidBox.max.z + heroDist
   );
   heroTarget.set(
     lidCenter.x,
-    lidCenter.y + lidSize.y*0.10,
+    lidCenter.y + lidSize.y*0.08,
     lidCenter.z
   );
 
@@ -210,22 +260,20 @@ function setProgress(v){
   if(!pivot) return;
   const p=clamp(Number(v)||0);
 
-  // Крышка открывается на первых 70% скролла.
-  // В исходном GLB она уже открыта, поэтому 0° = исходное открытое положение.
-  const OPEN_END=.70;
+  // Phase 1+2: real hinge motion.
+  // Imported model is the fully OPEN reference pose (rotation 0).
+  const OPEN_END=.72;
   const openPhase=clamp(p/OPEN_END);
   const a=ease(openPhase);
 
-  // With the pivot now on the real rear hinge, 90° is the physical closed position.
-  // A tiny 0.7° offset prevents visual z-fighting without letting the lid sink into the keyboard.
-  const CLOSED=THREE.MathUtils.degToRad(89.3);
-  const OPEN=THREE.MathUtils.degToRad(0);
+  // Use the automatically solved physical closing direction.
+  const CLOSED=(window.__CLOSED_ANGLE ?? THREE.MathUtils.degToRad(-90))*0.992;
+  const OPEN=0;
   pivot.rotation.x=THREE.MathUtils.lerp(CLOSED,OPEN,a);
+  pivot.updateMatrixWorld(true);
 
-  // Камера имеет ТРИ состояния, как в твоём эскизе.
-  // 0–24%: из низкого "закрытого" ракурса поднимаемся к виду на клавиатуру.
-  const camRise=ease(clamp(p/.24));
-  // 70–100%: после полного открытия переходим во фронтальный hero-ракурс.
+  // Camera rises early while the lid opens, then switches to the tight frontal hero shot.
+  const camRise=ease(clamp(p/.30));
   const hero=ease(clamp((p-.76)/.24));
 
   const phase12Pos=new THREE.Vector3().lerpVectors(closedCamPos,openingCamPos,camRise);
@@ -239,8 +287,8 @@ function setProgress(v){
   status.textContent=
     p<.02 ? '1 · полностью закрыт' :
     p<OPEN_END ? '2 · открывается · клавиатура видна' :
-    p<.99 ? '3 · камера → экран' :
-    '3 · открыт · клавиатура скрыта';
+    p<.99 ? '3 · камера → фронтальный экран' :
+    '3 · экран + тонкая нижняя кромка';
 }
 
 new GLTFLoader().load('./macbook_pro_14_inch_M5.glb',gltf=>{
@@ -249,9 +297,7 @@ new GLTFLoader().load('./macbook_pro_14_inch_M5.glb',gltf=>{
   scene.add(model);
   model.updateMatrixWorld(true);
   rigModel(model);
-  // After reparenting, recalc overall bounds from scene-visible meshes
-  rootBox=new THREE.Box3().setFromObject(model);
-  lidMeshes.forEach(o=>rootBox.union(worldBox(o)));
+  // rigModel leaves the laptop in the imported OPEN pose.
   setupCameras();
   setProgress(0);
   status.textContent='готово · закрыт';
